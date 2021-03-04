@@ -84,4 +84,4 @@ ssh username@******.ac.be -p 22000
 
  6 - Remove VSCode watch on the TUH folder
 
-- ``files.watcherExclude`` in the [VSCode settings](
+- ``files.watcherExclude`` in the [VSCode settings](https://code.visualstudio.com/docs/setup/linux#_visual-studio-code-is-unable-to-watch-for-file-changes-in-this-large-workspace-error-enospc)
