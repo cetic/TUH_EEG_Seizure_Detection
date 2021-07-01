@@ -1,5 +1,6 @@
-"""This script imports the needed features in memory
-(after choising the wanted features) and generates
+"""This script imports the needed features in memory.
+
+After choosing the wanted features it generates
 the input vector for XGBoost.
 
 Author:
@@ -21,16 +22,17 @@ import numpy as np
 import tqdm
 
 import tools.feature_extraction as fe
+import tools.files_filters as ff
 
 SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
-ONE_HOT_VECTORS_PATH = os.path.abspath(
+INPUT_VECTORS_PATH = os.path.abspath(
     os.path.join(SCRIPT_PATH, '..', 'input_vectors'),
 )
 
 gnsz_and_bckg = {'absz', 'tcsz', 'gnsz', 'tnsz', 'mysz', 'bckg'}
 
 
-def generate_hot_vector(
+def generate_input_vector(
     h5_file,
     subset: list,
     features: list,
@@ -38,18 +40,18 @@ def generate_hot_vector(
     single_channel: bool = True,
     keep_padding: bool = False,
 ):
-    """Generate the one hot vectors.
+    """Generate the input vectors.
 
     Args:
         h5_file: HDF5 file.
         subset: a list of recordings names.
-        features: a list of the features included in the one hot vector.
+        features: a list of the features included in the one input vector.
         montages: a list with the montage to include.
-        single_channel: if True, agregate the montages back to back.
+        single_channel: if True, aggregate the montages back to back.
         keep_padding: if True, keep the padding if any.
 
     Returns:
-        A tupple with the x and y vectors.
+        A tuple with the x and y vectors.
     """
     x = []
     y = []
@@ -76,7 +78,7 @@ def generate_hot_vector(
                     )
                 }
 
-                # Bufferize the values for all the montages
+                # Buffer size the values for all the montages
                 # (for one specific feature)
                 feature_buffer = h5_file[
                     'features/' + filename + '/' + feature
@@ -95,7 +97,7 @@ def generate_hot_vector(
 
                 input_vector_temp.append(f_stack)
 
-            # For each recordings compose the hot vector
+            # For each recordings compose the input vector
             # (for the features 'x_dev' and the targets 'y_dev')
             x.append(np.vstack(input_vector_temp).transpose())
 
@@ -135,7 +137,7 @@ def generate_hot_vector(
                     )
                 }
 
-                # Bufferize the values for all the montages
+                # Buffer size the values for all the montages
                 # (for one specific feature)
                 feature_buffer = h5_file[
                     'features/' + filename + '/' + feature
@@ -152,7 +154,7 @@ def generate_hot_vector(
 
                 input_vector_temp.append(f_stack)
 
-            # For each recordings compose the hot vector
+            # For each recordings compose the input vector
             # (for the features 'x_dev' and the targets 'y_dev')
             if n_pad >= 1:
                 x.append(np.hstack(input_vector_temp)[n_pad:-n_pad])
@@ -192,65 +194,61 @@ def main(args, prefix: str):
         dev_set = [m for m in meta if 'dev' in m['filepath']]
         train_set = [m for m in meta if 'train' in m['filepath']]
 
-        # Try to import the list of recording from a provided file
-        # No check here, can fail later
-        try:
-            with open(args.dev_list, 'r') as dev_list:
-                dev_set_ = list(dev_list)
-
-        except (TypeError, OSError):
-            if args.dev_list is not None:
-                print('An invalid list (file) has been passed for the dev list.')
-
-            print('Using the default dev list.')
-            # Take only the recordings using the AR montage
-            dev_set_ = [
-                m for m in dev_set
-                if '_ar/' in m['filepath']
-            ]
-
-            # AR and GNSZ only
-            ar_gnsz_only = []
-            for patient in dev_set_:
-                patient_lbl = {
-                    lbl['event'] for lbl in patient['annotations_tse']
-                }
-
-                if (patient_lbl & gnsz_and_bckg) == patient_lbl:
-                    ar_gnsz_only.append(patient)
-
-            dev_set_ = [os.path.basename(m['filepath']) for m in ar_gnsz_only]
-
-        # Try to import the list of recording from a provided file
-        # No check here, can fail later
+        # Filter the dev and train set
         try:
             with open(args.train_list, 'r') as train_list:
-                train_set_ = list(train_list)
+                train_set_filtered = [
+                    file_.splitline()[0] for file_ in list(train_list)
+                ]
 
         except (TypeError, OSError):
             if args.train_list is not None:
-                print('An invalid list (file) has been passed for the train list.')
+                print(
+                    'An invalid list (file) has been passed for the dev list.',
+                )
 
-            print('Using the default train list.')
-            train_set_ = [
-                m for m in train_set
-                if '_ar/' in m['filepath']
-            ]
+            if not len(args.train_filters):
+                print('Using the default dev list.')
+                train_set_filtered = list(train_set)
 
-            # AR and GNSZ only
-            ar_gnsz_only = []
-            for patient in train_set_:
-                patient_lbl = {
-                    lbl['event'] for lbl in patient['annotations_tse']
-                }
+            else:
+                train_set_filtered = list(
+                    ff.metalist_to_filelist(
+                        ff.filter_eval(
+                            args.train_filters,
+                            train_set,
+                        ),
+                    ),
+                )
 
-                if (patient_lbl & gnsz_and_bckg) == patient_lbl:
-                    ar_gnsz_only.append(patient)
+        try:
+            with open(args.dev_list, 'r') as dev_list:
+                dev_set_filtered = [
+                    file_.splitline()[0] for file_ in list(dev_list)
+                ]
 
-            train_set_ = [os.path.basename(m['filepath']) for m in ar_gnsz_only]
+        except (TypeError, OSError):
+            if args.dev_list is not None:
+                print(
+                    'An invalid list (file) has been passed for the dev list.',
+                )
+
+            if not len(args.dev_filters):
+                print('Using the default dev list.')
+                dev_set_filtered = list(dev_set)
+
+            else:
+                dev_set_filtered = list(
+                    ff.metalist_to_filelist(
+                        ff.filter_eval(
+                            args.dev_filters,
+                            dev_set,
+                        ),
+                    ),
+                )
 
         # List the montages to use
-        montages_ = meta_dict[os.path.basename(dev_set_[0])][
+        montages_ = meta_dict[os.path.basename(dev_set_filtered[0])][
             'annotations_lbl']['montages']
 
         if isinstance(args.montages, list):
@@ -278,11 +276,11 @@ def main(args, prefix: str):
 
         np.save('{0}/{1}_columns.npy'.format(args.path, prefix), columns)
 
-        # Generate the hot vectors
-        print('Convert features and targets for the hot vector (train).')
-        x_train, y_train = generate_hot_vector(
+        # Generate the input vectors
+        print('Convert features and targets for the input vector (train).')
+        x_train, y_train = generate_input_vector(
             h5_file=hdf5,
-            subset=train_set_,
+            subset=train_set_filtered,
             features=args.features,
             montages=montages,
             single_channel=not args.all,
@@ -303,10 +301,10 @@ def main(args, prefix: str):
         del x_train
         del y_train
 
-        print('Convert features and targets for the hot vector (dev).')
-        x_dev, y_dev = generate_hot_vector(
+        print('Convert features and targets for the input vector (dev).')
+        x_dev, y_dev = generate_input_vector(
             h5_file=hdf5,
-            subset=dev_set_,
+            subset=dev_set_filtered,
             features=args.features,
             montages=montages,
             single_channel=not args.all,
@@ -344,7 +342,7 @@ if __name__ == '__main__':
         nargs='+',
         type=str,
         help=(
-            'List of features to convert to the hot vector ("a", "A"'
+            'List of features to convert to the input vector ("a", "A"'
             ' or "all", "ALL" will lead to convert all the features,'
             ' as well as not providing this parameter).'
             ' Not case sensitive: ' + str_all_features
@@ -375,20 +373,38 @@ if __name__ == '__main__':
         default=0.8,
     )
 
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
         '-tl',
         '--train_list',
         type=str,
-        help='List of the files used for the training.',
+        help='List of the files used for the training (from file).',
         default=None,
     )
 
-    parser.add_argument(
+    group.add_argument(
+        '-tf',
+        '--train_filters',
+        type=str,
+        nargs='+',
+        help='Filters the training set.',
+    )
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
         '-dl',
         '--dev_list',
         type=str,
-        help='List of the files used for the testing (using dev).',
+        help='List of the files used for the testing (dev, from file).',
         default=None,
+    )
+
+    group.add_argument(
+        '-df',
+        '--dev_filters',
+        type=str,
+        nargs='+',
+        help='Filters the dataset, for the dev set.',
     )
 
     parser.add_argument(
@@ -397,9 +413,17 @@ if __name__ == '__main__':
         type=str,
         help='Saving path where the ".npy"'
         ' will be saved (default="{0}").'.format(
-            ONE_HOT_VECTORS_PATH,
+            INPUT_VECTORS_PATH,
         ),
-        default=ONE_HOT_VECTORS_PATH,
+        default=INPUT_VECTORS_PATH,
+    )
+
+    parser.add_argument(
+        '-fp',
+        '--files_prefix',
+        type=str,
+        help='Prefix of the files names.',
+        default=None,
     )
 
     # By default, we remove the padding
@@ -420,7 +444,7 @@ if __name__ == '__main__':
         default=False,
     )
 
-    # By default, only all the channels are agregated to one channel.
+    # By default, only all the channels are aggregated to one channel.
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
         '-a',
@@ -433,7 +457,10 @@ if __name__ == '__main__':
     group.add_argument(
         '-s',
         '--single',
-        help='If set, each column is a specific feature.',
+        help=(
+            'If set, each column is a specific feature, the model will work '
+            'on all the chanels as they were one.'
+        ),
         action='store_true',
         default=False,
     )
@@ -520,8 +547,11 @@ if __name__ == '__main__':
         short_prefix_hash,
     )
 
+    info_filename = short_prefix
+    if args.files_prefix is not None:
+        info_filename = args.files_prefix
     info_filename = os.path.join(
-        args.path, '{0}.info'.format(short_prefix),
+        args.path, '{0}.info'.format(info_filename),
     )
 
     print('The following arguments have been parsed:')
@@ -553,7 +583,7 @@ if __name__ == '__main__':
     print('Create the information file ({0})'.format(info_filename))
     with open(info_filename, 'w+') as info_file:
         info_file.write('[path]\n')
-        info_file.write('{0}\n'.format(ONE_HOT_VECTORS_PATH))
+        info_file.write('{0}\n'.format(INPUT_VECTORS_PATH))
 
         info_file.write('[prefix]\n')
         info_file.write('{0}\n'.format(prefix))
@@ -571,4 +601,7 @@ if __name__ == '__main__':
         for key, value in vars(args).items():
             info_file.write('{0}: {1}\n'.format(key, value))
 
-    main(args=args, prefix=short_prefix)
+    prefix = short_prefix
+    if args.files_prefix is not None:
+        prefix = args.files_prefix
+    main(args=args, prefix=prefix)

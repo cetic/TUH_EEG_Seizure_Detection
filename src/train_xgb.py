@@ -1,6 +1,7 @@
-"""
+"""Train the XGBoost model.
+
 This script imports the needed features in memory
-(after choising the wanted features) and train the model.
+(after choosing the wanted features) and train the model.
 
 Author:
     - Vincent Stragier
@@ -14,7 +15,6 @@ srun --partition=gpu --job-name=xgb -N 1 -n 16 --mem=120G -t 1:00:00
 --mail-user=vincent.stragier@student.umons.ac.be --pty bash
 """
 import datetime
-# import hashlib
 import json
 import os
 import sys
@@ -31,68 +31,89 @@ MODEL_PATH = os.path.abspath(
 )
 
 
-def main(args, path: str, prefix: str, model_path: str, date_str: str):
-    input_col = "{0}/{1}_columns.npy".format(path, prefix)
-    input_x_train = "{0}/{1}_x_train.npy".format(path, prefix)
-    input_y_train = "{0}/{1}_y_train.npy".format(path, prefix)
-    input_x_dev = "{0}/{1}_x_dev.npy".format(path, prefix)
-    input_y_dev = "{0}/{1}_y_dev.npy".format(path, prefix)
-    model_file = "{0}/{1}_({2}).model".format(model_path, date_str, prefix)
-    config_file = "{0}/{1}_({2}).config".format(model_path, date_str, prefix)
-    importances_file = "{0}/{1}_({2}).xlsx".format(model_path, date_str, prefix)
+def main(
+    args,
+    path: str,
+    prefix: str,
+    files_prefix: str,
+    model_path: str,
+    date_str: str,
+):
+    """Run the main process.
+
+    Args:
+        args: the parsed arguments.
+        path: the path to the input data.
+        prefix: the prefix of the input data.
+        files_prefix: the prefix of the output files.
+        model_path: the path where to store the model,
+            the training config file and the importance of the features.
+        date_str: the current date.
+    """
+    input_col = '{0}/{1}_columns.npy'.format(path, prefix)
+    input_x_train = '{0}/{1}_x_train.npy'.format(path, prefix)
+    input_y_train = '{0}/{1}_y_train.npy'.format(path, prefix)
+    input_x_dev = '{0}/{1}_x_dev.npy'.format(path, prefix)
+    input_y_dev = '{0}/{1}_y_dev.npy'.format(path, prefix)
+    model_file = '{0}/{1}.model'.format(model_path, files_prefix)
+    config_file = '{0}/{1}.config'.format(model_path, files_prefix)
+    importance_file = '{0}/{1}.xlsx'.format(
+        model_path, files_prefix,
+    )
 
     if args.configuration is None:
         config = {
-            "max_depth": 3,
-            "n_estimators": 400,
-            "min_child_weight": 1,
-            "tree_method": "gpu_hist",
-            "learning_rate": 0.07,
+            'max_depth': 3,
+            'n_estimators': 400,
+            'min_child_weight': 1,
+            'tree_method': 'gpu_hist',
+            'learning_rate': 0.07,
+            'objective': 'binary:logistic',
         }
 
     else:
         with open(file=args.configuration, mode='r') as json_file:
             config = json.load(json_file)
 
-    print("Start training...")
+    print('Start training...')
     columns = np.load(input_col)
-    X_train = np.load(input_x_train)
-    Y_train = np.load(input_y_train)
+    x_train = np.load(input_x_train)
+    y_train = np.load(input_y_train)
 
     if args.split_train:
-        X_train, X_dev, Y_train, Y_dev = train_test_split(
-            X_train,
-            Y_train,
+        x_train, x_dev, y_train, y_dev = train_test_split(
+            x_train,
+            y_train,
             test_size=args.test_size,
-            stratify=Y_train,
+            stratify=y_train,
         )
 
     else:
-        X_dev = np.load(input_x_dev)
-        Y_dev = np.load(input_y_dev)
+        x_dev = np.load(input_x_dev)
+        y_dev = np.load(input_y_dev)
 
     # Imbalance ratio.
     # Allows to compensate the imbalance between the classes.
-    imbalance_ratio = len(Y_train) / np.sum(Y_train)
-    print("Imbalance:", imbalance_ratio)
-    config.update({"scale_pos_weight": imbalance_ratio})
+    imbalance_ratio = len(y_train) / np.sum(y_train)
+    print('Imbalance:', imbalance_ratio)
+    config.update({'scale_pos_weight': imbalance_ratio})
 
     # Train the classifier
-    # "rmse" for root mean squared error.
-    # "mae" for mean absolute error.
-    # "logloss" for binary logarithmic loss
-    # and "mlogloss" for multi-class log loss (cross entropy).
-    # "error" for classification error.
-    # "auc" for area under ROC curve.
+    # 'rmse' for root mean squared error.
+    # 'mae' for mean absolute error.
+    # 'logloss' for binary logarithmic loss
+    # and 'mlogloss' for multi-class log loss (cross entropy).
+    # 'error' for classification error.
+    # 'auc' for area under ROC curve.
     with open(file=config_file, mode='w+') as cfg_file:
         json.dump(config, cfg_file)
 
-    clf = xgb.XGBModel(**config)
+    clf = xgb.XGBClassifier(**config)
 
     clf.fit(
-        X_train, Y_train,
-        eval_set=[(X_dev, Y_dev)],
-        eval_metric=["auc"],
+        x_train, y_train,
+        eval_set=[(x_dev, y_dev)],
+        eval_metric=['auc'],
         early_stopping_rounds=400,
         verbose=True,
     )
@@ -104,7 +125,7 @@ def main(args, path: str, prefix: str, model_path: str, date_str: str):
 
     for feature_name, importance in zip(imp, columns):
         print(
-            "Feature name: {0}, importance: {1}".format(
+            'Feature name: {0}, importance: {1}'.format(
                 importance,
                 feature_name,
             ),
@@ -127,21 +148,21 @@ def main(args, path: str, prefix: str, model_path: str, date_str: str):
         columns=[
             'Feature name',
             'Importance',
-            'Normalised importance',
+            'Normalized importance',
             'Cumulated importance',
         ],
     )
 
     df_importances['Importance'] = pd.to_numeric(df_importances['Importance'])
-    df_importances['Normalised importance'] = pd.to_numeric(
-        df_importances['Normalised importance'],
+    df_importances['Normalized importance'] = pd.to_numeric(
+        df_importances['Normalized importance'],
     )
     df_importances['Cumulated importance'] = pd.to_numeric(
         df_importances['Cumulated importance'],
     )
 
     with pd.ExcelWriter(  # pylint: disable=abstract-class-instantiated
-        importances_file,
+        importance_file,
         date_format='YYYY-MM-DD',
         datetime_format='YYYY-MM-DD HH:MM:SS',
         engine='xlsxwriter',
@@ -168,7 +189,7 @@ def main(args, path: str, prefix: str, model_path: str, date_str: str):
             worksheet.set_column(idx, idx, max_len)  # set column width
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # Create the script arguments parser
     import argparse
     parser = argparse.ArgumentParser(allow_abbrev=True)
@@ -188,6 +209,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        '-fp',
+        '--files_prefix',
+        type=str,
+        help='Prefix of the files names.',
+        default=None,
+    )
+
+    parser.add_argument(
         '--split_train',
         action='store_true',
         help=(
@@ -202,7 +231,7 @@ if __name__ == "__main__":
         type=float,
         help=(
             'proportion of the training set to use for validation'
-            ' (by defaul 0.2)'
+            ' (by default 0.2)'
         ),
         default=0.2,
     )
@@ -211,8 +240,11 @@ if __name__ == "__main__":
         '-c',
         '--configuration',
         type=str,
-        help='path to a ".json" containing the XGBoost configuration',
-        default=None
+        help=(
+            'path to a ".json" or ".config" containing the XGBoost '
+            'configuration'
+        ),
+        default=None,
     )
 
     # By default ask to the user if a want to proceed.
@@ -275,27 +307,20 @@ if __name__ == "__main__":
     prefix = os.path.basename(args.input_vectors_info)
     prefix = prefix[:prefix.rfind('.')]
 
-    # prefix = '{0}_-_githash:{1}'.format(
-    #     date.strftime('%Y-%m-%d_%H:%M:%S-%f'),
-    #     sha,
-    # )
-
-    # short_prefix_hash = hashlib.md5(prefix.encode('UTF-16')).hexdigest()
-
-    # short_prefix = '{0}_{1}'.format(
-    #     date.strftime('%Y-%m-%d_%H:%M'),
-    #     short_prefix_hash,
-    # )
-
     # Set model argument
     if args.model_path is not None:
         model_path = args.model_path
     else:
         model_path = MODEL_PATH
 
+    if args.files_prefix is not None:
+        files_prefix = args.files_prefix
+    else:
+        files_prefix = '{0}_({1})'.format(date_str, prefix)
+
     # Generate filename and path for the info file
     info_filename = os.path.join(
-        model_path, '{0}_({1}).info'.format(date_str, prefix),
+        model_path, '{0}.info'.format(files_prefix),
     )
 
     path = os.path.dirname(os.path.abspath(args.input_vectors_info))
@@ -308,23 +333,18 @@ if __name__ == "__main__":
         info_file.write('[prefix]\n')
         info_file.write('{0}\n'.format(prefix))
 
-        # info_file.write('[short prefix hash]\n')
-        # info_file.write('{0}\n'.format(short_prefix_hash))
-
-        # info_file.write('[short prefix]\n')
-        # info_file.write('{0}\n'.format(short_prefix))
-
         info_file.write('[sys.argv]\n')
         info_file.write('{0}\n'.format(str(sys.argv)))
 
         info_file.write('[parsed arguments]\n')
-        for k, v in vars(args).items():
-            info_file.write('{0}: {1}\n'.format(k, v))
+        for key, value in vars(args).items():
+            info_file.write('{0}: {1}\n'.format(key, value))
 
     main(
         args=args,
         path=path,
         prefix=prefix,
+        files_prefix=files_prefix,
         model_path=model_path,
         date_str=date_str,
     )

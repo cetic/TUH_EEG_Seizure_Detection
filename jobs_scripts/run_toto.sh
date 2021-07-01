@@ -6,7 +6,7 @@
 #SBATCH --mem=5G
 #SBATCH --gres="gpu:2"
 #SBATCH -t 1:00:00
-#SBATCH --mail-user=your.name@umons.ac.be
+#SBATCH --mail-user=id@umons.ac.be
 #SBATCH --mail-type=ALL 
 
 # Loading Python 3.8.6rc1

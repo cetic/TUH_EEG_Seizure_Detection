@@ -1,4 +1,6 @@
-"""This script converts the dataset to a HDF5 file
+"""Export the dataset to a HDF5 file.
+
+This script converts the dataset to a HDF5 file
 in order to easy futher processing.
 Note that the metadata have already been extracted
 to an lzma pickle file and will be added to the
@@ -21,10 +23,11 @@ import tools.feature_extraction as fe
 
 
 def signals_extraction_worker(
-        filepath: str,
-        metadata: list,
-        hdf5_path: str,
-        hdf5_dataset=None):
+    filepath: str,
+    metadata: list,
+    hdf5_path: str,
+    hdf5_dataset=None,
+):
     """Extract the signals of the edf files and save them in a HDF5 dataset.
 
     Args:
@@ -97,32 +100,14 @@ if __name__ == '__main__':
     # Remove incomplete recording from the dataset
     print('Filters the filelist to remove incomplete recordings.')
     filtered_paths = sorted(
-        list(
-            filter(
-                fe.filters_dataset_files,
-                list(
-                    set(
-                        files_list,
-                    ),
-                ),
-            ),
-        ),
+        filter(fe.filters_dataset_files, list(set(files_list))),
     )
 
     print(
         '{0} partial recording(s) were found, '
-        'which represent {1} full recording(s).'
-        .format(
-            len(
-                list(
-                    set(
-                        files_list,
-                    ),
-                ),
-            ),
-            len(
-                filtered_paths,
-            ),
+        'which represent {1} full recording(s).'.format(
+            len(list(set(files_list))),
+            len(filtered_paths),
         ),
     )
 
@@ -130,16 +115,20 @@ if __name__ == '__main__':
     print('Loads metadata.')
     metadata = fe.ta.load_pickle_lzma(args.meta_path)
     print('Metadata are loaded.')
-    print('\tTransforms the list of dictionaries '
-          'in a dictionary of dictionaries.')
+    print(
+        '\tTransforms the list of dictionaries '
+        'in a dictionary of dictionaries.',
+    )
 
     metadata_dict = {
         os.path.basename(meta['filepath']):
         meta for meta in metadata
     }
 
-    print('Converts the metadata (list and dict) '
-          'to numpy arrays of bytes.')
+    print(
+        'Converts the metadata (list and dict) '
+        'to numpy arrays of bytes.',
+    )
 
     compressed_metadata = fe.object_to_raw_numpy(metadata)
 
@@ -147,12 +136,15 @@ if __name__ == '__main__':
 
     # Create HDF5 file
     with h5py.File(args.hd5_path, mode='w') as hdf5:
-        print('HDF5 file has been created or opened '
-              '(it will be loaded with the dataset now).')
-        hdf5.attrs['dataset_description'] =\
-            """This file contains the TUSZ dataset version 1.5.2.
-The montages and useful signal in the dataset collection.
-The metadata in the metadata collection."""
+        print(
+                'HDF5 file has been created or opened '
+                '(it will be loaded with the dataset now).',
+            )
+        hdf5.attrs['dataset_description'] = (
+            'This file contains the TUSZ dataset version 1.5.2.\n'
+            'The montages and useful signal in the dataset collection.\n'
+            'The metadata in the metadata collection.'
+        )
 
         print('\tSave the metadata to the HDF5 file.')
         hdf5.create_dataset('metadata', data=compressed_metadata)

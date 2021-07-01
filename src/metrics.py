@@ -12,7 +12,6 @@ from skimage.util.shape import view_as_windows
 import tools.feature_extraction as fe
 import tools.files_filters as ff
 
-
 report_columns = [
     'Filepath',
     'Filename',
@@ -43,15 +42,15 @@ report_columns = [
 
 
 def auto_adjust(writer, sheet_name: str, dataframe, offset: int = 2):
-    """Adjust roughtly the columns width of an Excel sheet.
+    """Adjust roughly the columns width of an Excel sheet.
 
     Args:
-        writer: the xlsx writter.
+        writer: the xlsx writer.
         sheet_name: the name of the sheet on which
-        to adjust the width of the columns.
+            to adjust the width of the columns.
         dataframe: the data used to fill the sheet
-        (used to find the maximal width)
-        offset: a value to offset.
+            (used to find the maximal width)
+         offset: a value to offset.
 
     https://stackoverflow.com/a/40535454
     """
@@ -135,14 +134,14 @@ def main(
         model_mode: if True, the mode is 'all' otherwise 'single'.
         threshold: used to determine if a segment is a seizure or not.
         smoothing_window: the width of the smoothing window.
-        smmothing_ratio: the ratio used for the smoothing.
+        smoothing_ratio: the ratio used for the smoothing.
     """
     # Determine is it is necessary to apply smoothing (post processing)
     smoothing = not (smoothing_ratio == 0 or smoothing_window == 0)
 
     if not model_mode:
         raise NotImplementedError(
-            'Only the "old" all mode model metrics can be computed for now.'
+            'Only the "old" all mode model metrics can be computed for now.',
         )
 
     # Load the model
@@ -165,7 +164,9 @@ def main(
         # Filter the dev and train set
         try:
             with open(args.train_list, 'r') as train_list:
-                train_set_filtered = list(train_list)
+                train_set_filtered = [
+                    file_.splitline()[0] for file_ in list(train_list)
+                ]
 
         except (TypeError, OSError):
             if args.train_list is not None:
@@ -189,7 +190,9 @@ def main(
 
         try:
             with open(args.dev_list, 'r') as dev_list:
-                dev_set_filtered = list(dev_list)
+                dev_set_filtered = [
+                    file_.splitline()[0] for file_ in list(dev_list)
+                ]
 
         except (TypeError, OSError):
             if args.dev_list is not None:
@@ -236,11 +239,11 @@ def main(
         #     '{0} ({1})'.format(f, m) for m in montages for f in features
         # ]
 
-        # x_train features in hot vector
+        # x_train features in input vector
         x_train, y_train, x_dev, y_dev = [], [], [], []
 
         # Generate the metrics
-        print('Convert features and targets for the hot vector (train).')
+        print('Convert features and targets for the input vector (train).')
         global_y_true = []
         global_y_pred = []
         all_metrics = []
@@ -249,7 +252,7 @@ def main(
 
         # Go through the training files
         for filename in tqdm.tqdm(train_set_filtered):
-            one_hot_vector_temp = []
+            input_vector_temp = []
             attrs = dict(h5['features/' + filename + '/' + features[0]].attrs)
             step = attrs['step']
             # Number of pads to remove
@@ -265,7 +268,7 @@ def main(
                     )
                 }
 
-                # Bufferize the values for all the montages
+                # Buffer size the values for all the montages
                 # (for one specific feature)
                 feature_buffer = h5[
                     'features/' + filename + '/' + feature
@@ -278,23 +281,23 @@ def main(
                     ],
                 ).transpose()
 
-                one_hot_vector_temp.append(f_stack)
+                input_vector_temp.append(f_stack)
 
-            # For each recordings compose the hot vector
+            # For each recordings compose the input vector
             # (for the features 'x_train' and the targets 'y_train')
             y_train = h5['dataset/' + filename]['targets']
             if n_added_padding:
                 x_train = np.hstack(
-                    one_hot_vector_temp,
+                    input_vector_temp,
                 )[n_added_padding:-n_added_padding]
             else:
-                x_train = np.hstack(one_hot_vector_temp)
+                x_train = np.hstack(input_vector_temp)
 
             sampling_frequency = h5['dataset/' + filename][
                 'sampling_frequency'
             ][0][0]
 
-            # Assemption: sampling_frequency is constant
+            # Assumption: sampling_frequency is constant
             step_in_samples = int(step * sampling_frequency)
 
             number_of_channels = h5['dataset/' + filename][
@@ -354,9 +357,27 @@ def main(
             global_y_true.append(y_train)
             global_y_pred.append(y_dewin)
 
-            labels_comparison = np.vstack(
-                ((y_train > threshold) * 1, (y_dewin > 0.5) * 1, y_dewin),
-            ).T
+            if smoothing:
+                labels_comparison = np.vstack(
+                    (
+                        (y_train > threshold) * 1,
+                        (y_dewin > 0.5) * 1,
+                        y_dewin,
+                        fe.binary_smoothing(
+                            (y_dewin > 0.5) * 1,
+                            smoothing_window,
+                            smoothing_ratio,
+                        ),
+                    ),
+                ).T
+            else:
+                labels_comparison = np.vstack(
+                    (
+                        (y_train > threshold) * 1,
+                        (y_dewin > 0.5) * 1,
+                        y_dewin,
+                    ),
+                ).T
 
             try:
                 labels_comparison_train = concatenate_labels_columns(
@@ -384,14 +405,14 @@ def main(
             ),
         )
 
-        print('Convert features and targets for the hot vector (dev).')
+        print('Convert features and targets for the input vector (dev).')
         global_y_true = []
         global_y_pred = []
         dev_metrics_lines = []
         labels_comparison_dev = np.array([])
 
         for filename in tqdm.tqdm(dev_set_filtered):
-            one_hot_vector_temp = []
+            input_vector_temp = []
             attrs = dict(h5['features/' + filename + '/' + features[0]].attrs)
             step = attrs['step']
             # Number of pads to remove
@@ -407,7 +428,7 @@ def main(
                     )
                 }
 
-                # Bufferize the values for all the montages
+                # Buffer size the values for all the montages
                 # (for one specific feature)
                 feature_buffer = h5[
                     'features/' + filename + '/' + feature
@@ -420,23 +441,23 @@ def main(
                     ],
                 ).transpose()
 
-                one_hot_vector_temp.append(f_stack)
+                input_vector_temp.append(f_stack)
 
-            # For each recordings compose the hot vector
+            # For each recordings compose the input vector
             # (for the features 'x_train' and the targets 'y_train')
             y_dev = h5['dataset/' + filename]['targets']
             if n_added_padding:
                 x_dev = np.hstack(
-                    one_hot_vector_temp,
+                    input_vector_temp,
                 )[n_added_padding:-n_added_padding]
             else:
-                x_dev = np.hstack(one_hot_vector_temp)
+                x_dev = np.hstack(input_vector_temp)
 
             sampling_frequency = h5['dataset/' + filename][
                 'sampling_frequency'
             ][0][0]
 
-            # Assemption: sampling_frequency is constant
+            # Assumption: sampling_frequency is constant
             step_in_samples = int(step * sampling_frequency)
 
             number_of_channels = h5['dataset/' + filename][
@@ -498,9 +519,27 @@ def main(
             global_y_true.append(y_dev)
             global_y_pred.append(y_dewin)
 
-            labels_comparison = np.vstack(
-                ((y_dev > threshold) * 1, (y_dewin > 0.5) * 1, y_dewin),
-            ).T
+            if smoothing:
+                labels_comparison = np.vstack(
+                    (
+                        (y_dev > threshold) * 1,
+                        (y_dewin > 0.5) * 1,
+                        y_dewin,
+                        fe.binary_smoothing(
+                            (y_dewin > 0.5) * 1,
+                            smoothing_window,
+                            smoothing_ratio,
+                        ),
+                    ),
+                ).T
+            else:
+                labels_comparison = np.vstack(
+                    (
+                        (y_dev > threshold) * 1,
+                        (y_dewin > 0.5) * 1,
+                        y_dewin,
+                    ),
+                ).T
 
             try:
                 labels_comparison_dev = concatenate_labels_columns(
@@ -531,13 +570,27 @@ def main(
         df_all = pd.DataFrame(all_metrics, columns=report_columns)
 
         # Build dev set labels comparison sheet
-        header = pd.MultiIndex.from_product(
-            [
-                dev_set_filtered,
-                ['Truth', 'Predicted binary', 'Predicted'],
-            ],
-            names=['loc', 'Time interval [s]'],
-        )
+        if smoothing:
+            header = pd.MultiIndex.from_product(
+                [
+                    dev_set_filtered,
+                    [
+                        'Truth',
+                        'Predicted binary',
+                        'Predicted',
+                        'Smoothed prediction',
+                    ],
+                ],
+                names=['loc', 'Time interval [s]'],
+            )
+        else:
+            header = pd.MultiIndex.from_product(
+                [
+                    dev_set_filtered,
+                    ['Truth', 'Predicted binary', 'Predicted'],
+                ],
+                names=['loc', 'Time interval [s]'],
+            )
 
         indexes = (
             '[{0}, {1}['.format(i * step, (i + 1) * step)
@@ -551,13 +604,27 @@ def main(
         )
 
         # Build train set labels comparison sheet
-        header = pd.MultiIndex.from_product(
-            [
-                train_set_filtered,
-                ['Truth', 'Predicted binary', 'Predicted'],
-            ],
-            names=['loc', 'Time interval [s]'],
-        )
+        if smoothing:
+            header = pd.MultiIndex.from_product(
+                [
+                    train_set_filtered,
+                    [
+                        'Truth',
+                        'Predicted binary',
+                        'Predicted',
+                        'Smoothed prediction',
+                    ],
+                ],
+                names=['loc', 'Time interval [s]'],
+            )
+        else:
+            header = pd.MultiIndex.from_product(
+                [
+                    train_set_filtered,
+                    ['Truth', 'Predicted binary', 'Predicted'],
+                ],
+                names=['loc', 'Time interval [s]'],
+            )
 
         indexes = (
             '[{0}, {1}['.format(i * step, (i + 1) * step)

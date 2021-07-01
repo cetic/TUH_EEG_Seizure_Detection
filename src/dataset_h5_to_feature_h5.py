@@ -52,12 +52,11 @@ class NestablePool(multiprocessing.pool.Pool):
 
 
 def get_metadata(filename: str, extract_meta: bool = False):
-    """Gets the list of recordings stored in the HDF5,
-    and the metadata.
+    """Get the list of recordings stored in the HDF5, and the metadata.
 
     Args:
         filename: the path to the HDF5
-        file with its extension.
+            file with its extension.
 
     Returns:
         A tuple with (recordings, metadata, metadata_dict) if
@@ -641,7 +640,7 @@ if __name__ == '__main__':
     # in order to increase the sensitivity at the begining
     # and at the end of the signal.
     if padding is None:
-        padding = (window - step)
+        padding = window - step
 
     try:
         assert padding >= 0
@@ -798,10 +797,3 @@ if __name__ == '__main__':
                 continue
 
     print('Done.')
-
-    # h5f = h5py.File(
-    #     args.hdf5,
-    #     mode='r',
-    #     libver='latest',
-    #     swmr=True,
-    # )
