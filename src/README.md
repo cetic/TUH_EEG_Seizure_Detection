@@ -12,7 +12,7 @@ The dependencies can be installed using `pip`:
 
 ```bash
 python3 -m pip install --upgrade pip
-python3 -m pip install --upgrade requirements.txt
+python3 -m pip install --upgrade -r requirements.txt
 ```
 
 ## Usage
